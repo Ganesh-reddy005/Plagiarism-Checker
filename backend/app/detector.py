@@ -9,7 +9,7 @@ from typing import List, Dict
 from app.embedder import encode_single
 from app.models import CheckRequest, MatchResult, PlagiarismReport, SentenceSearchResult, SearchedSource
 from app.preprocessor import preprocess
-from app.similarity import compute_similarity_for_results
+from app.similarity import compute_similarity_for_results, compute_standard_similarity
 from app.web_searcher import search_all_sentences
 from app.database import search_internal_database
 
@@ -18,12 +18,13 @@ async def run_detection(request: CheckRequest) -> PlagiarismReport:
     Full pipeline:
     1. Preprocess → sentences
     2. Web search (async, concurrent)
-    3. Embed each sentence
-    4. Internal DB search (Qdrant)
-    5. Compare embeddings vs retrieved content (Web & Internal)
-    6. Aggregate score
+    3. Compute similarity:
+       - semantic: embed + cosine similarity
+       - standard: difflib text overlap + bigram Jaccard
+    4. Aggregate score & build report
     """
     start_time = time.time()
+    is_semantic = request.check_mode == "semantic"
 
     sentences = preprocess(request.text, max_sentences=request.max_sentences)
     total_sentences = len(sentences)
@@ -35,10 +36,12 @@ async def run_detection(request: CheckRequest) -> PlagiarismReport:
             matched_sentences=0,
             matches=[],
             processing_time=round(time.time() - start_time, 2),
+            check_mode=request.check_mode,
+            risk_level="Low",
         )
 
     all_web_results = await search_all_sentences(sentences, max_results=5)
-    
+
     global_max_score = 0.0
     global_max_url = None
     global_max_title = None
@@ -48,78 +51,91 @@ async def run_detection(request: CheckRequest) -> PlagiarismReport:
     matched_count = 0
 
     for sentence, web_results in zip(sentences, all_web_results):
-        sentence_embedding = encode_single(sentence)
-        if sentence_embedding.size == 0:
-            continue
-            
-        # 1. Get internal results
+        # ── Semantic path: needs embedder ─────────────────────────────
+        if is_semantic:
+            sentence_embedding = encode_single(sentence)
+            if sentence_embedding.size == 0:
+                continue
+
+        # ── Gather combined sources (same for both modes) ─────────────
         internal_results = search_internal_database(sentence, max_results=3)
-        
-        # 2. Combine results
         combined_sources = []
         for r in internal_results:
-             combined_sources.append({
-                 "content": r["content"],
-                 "url": r["url"],
-                 "title": r["title"]
-             })
-             
+            combined_sources.append({"content": r["content"], "url": r["url"], "title": r["title"]})
         for r in web_results:
-             combined_sources.append({
-                 "content": r["content"],
-                 "url": r["url"],
-                 "title": r["title"]
-             })
-             
-        # 3. Calculate similarities for ALL combined sources
-        # We need individual scores to populate SearchedSource
+            combined_sources.append({"content": r["content"], "url": r["url"], "title": r["title"]})
+
+        # ── Score each source ─────────────────────────────────────────
         searched_sources = []
         best_overall_score = 0.0
         best_match_info = None
-        
+
         if combined_sources:
-            from app.embedder import encode
-            from sklearn.metrics.pairwise import cosine_similarity
-            import numpy as np
-            
-            content_list = [c["content"] for c in combined_sources]
-            content_embeddings = encode(content_list)
-            
-            if len(content_embeddings) > 0:
-                scores = cosine_similarity(sentence_embedding.reshape(1, -1), content_embeddings)[0]
-                
-                for idx, score in enumerate(scores):
-                    score = float(score)
+            if is_semantic:
+                # Semantic: encode all content and use cosine similarity
+                from app.embedder import encode
+                from sklearn.metrics.pairwise import cosine_similarity
+                import numpy as np
+
+                content_list = [c["content"] for c in combined_sources]
+                content_embeddings = encode(content_list)
+
+                if len(content_embeddings) > 0:
+                    scores = cosine_similarity(
+                        sentence_embedding.reshape(1, -1), content_embeddings
+                    )[0]
+                    for idx, score in enumerate(scores):
+                        score = float(score)
+                        searched_sources.append(
+                            SearchedSource(
+                                url=combined_sources[idx]["url"],
+                                title=combined_sources[idx]["title"],
+                                snippet=combined_sources[idx]["content"][:4000]
+                                + ("..." if len(combined_sources[idx]["content"]) > 4000 else ""),
+                                similarity=round(score, 4),
+                            )
+                        )
+                        if score > best_overall_score:
+                            best_overall_score = score
+                            best_match_info = {
+                                "url": combined_sources[idx]["url"],
+                                "title": combined_sources[idx]["title"],
+                                "snippet": combined_sources[idx]["content"][:300] + "...",
+                            }
+                        if score > global_max_score:
+                            global_max_score = score
+                            global_max_url = combined_sources[idx]["url"]
+                            global_max_title = combined_sources[idx]["title"]
+            else:
+                # Standard: difflib text overlap — no embedder
+                for src in combined_sources:
+                    score = compute_standard_similarity(sentence, src["content"])
                     searched_sources.append(
                         SearchedSource(
-                            url=combined_sources[idx]["url"],
-                            title=combined_sources[idx]["title"],
-                            snippet=combined_sources[idx]["content"][:4000] + ("..." if len(combined_sources[idx]["content"]) > 4000 else ""),
-                            similarity=round(score, 4)
+                            url=src["url"],
+                            title=src["title"],
+                            snippet=src["content"][:4000]
+                            + ("..." if len(src["content"]) > 4000 else ""),
+                            similarity=round(score, 4),
                         )
                     )
-                    
                     if score > best_overall_score:
                         best_overall_score = score
                         best_match_info = {
-                            "url": combined_sources[idx]["url"],
-                            "title": combined_sources[idx]["title"],
-                            "snippet": combined_sources[idx]["content"][:300] + "...",
+                            "url": src["url"],
+                            "title": src["title"],
+                            "snippet": src["content"][:300] + "...",
                         }
-                    
-                    # Track global highest match
                     if score > global_max_score:
                         global_max_score = score
-                        global_max_url = combined_sources[idx]["url"]
-                        global_max_title = combined_sources[idx]["title"]
+                        global_max_url = src["url"]
+                        global_max_title = src["title"]
 
-        # Sort sources by similarity descending
+        # Sort by similarity descending
         searched_sources.sort(key=lambda x: x.similarity or 0.0, reverse=True)
-        
-        # Round the score to avoid floating point precision issues against threshold
+
         is_plagiarised = round(best_overall_score, 4) >= request.threshold
 
-        
         if is_plagiarised and best_match_info:
             matched_count += 1
             matches.append(
@@ -129,24 +145,36 @@ async def run_detection(request: CheckRequest) -> PlagiarismReport:
                     source_title=best_match_info["title"],
                     similarity=round(best_overall_score, 4),
                     matched_snippet=best_match_info["snippet"],
-                    all_sources=searched_sources
+                    all_sources=searched_sources,
                 )
             )
-            
+
         sentence_search_results.append(
             SentenceSearchResult(
                 sentence=sentence,
                 sources=searched_sources,
                 best_similarity=round(best_overall_score, 4),
-                is_plagiarised=is_plagiarised
+                is_plagiarised=is_plagiarised,
             )
         )
 
     if total_sentences > 0:
-        avg_percentage = sum(r.best_similarity for r in sentence_search_results) / total_sentences * 100
+        avg_percentage = (
+            sum(r.best_similarity for r in sentence_search_results) / total_sentences * 100
+        )
         score = round(avg_percentage, 2)
     else:
         score = 0.0
+
+    # Derive risk level
+    if score >= 75:
+        risk_level = "Very High"
+    elif score >= 50:
+        risk_level = "High"
+    elif score >= 25:
+        risk_level = "Moderate"
+    else:
+        risk_level = "Low"
 
     return PlagiarismReport(
         score=score,
@@ -158,4 +186,6 @@ async def run_detection(request: CheckRequest) -> PlagiarismReport:
         highest_match_url=global_max_url,
         highest_match_title=global_max_title,
         processing_time=round(time.time() - start_time, 2),
+        check_mode=request.check_mode,
+        risk_level=risk_level,
     )

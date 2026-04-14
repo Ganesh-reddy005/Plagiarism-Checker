@@ -39,6 +39,7 @@ interface ReportData {
   processing_time: number;
   risk_level: string;
   summary: string;
+  check_mode: string;
 }
 
 export default function HomePage() {
@@ -50,7 +51,8 @@ export default function HomePage() {
   const handleSubmit = async (
     text: string,
     threshold: number,
-    maxSentences: number
+    maxSentences: number,
+    checkMode: string
   ) => {
     setAppState("loading");
     setErrorMsg("");
@@ -60,7 +62,12 @@ export default function HomePage() {
       const res = await fetch("/api/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, threshold, max_sentences: maxSentences }),
+        body: JSON.stringify({
+          text,
+          threshold,
+          max_sentences: maxSentences,
+          check_mode: checkMode,
+        }),
       });
 
       if (!res.ok) {

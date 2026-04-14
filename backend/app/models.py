@@ -3,7 +3,7 @@ Pydantic models for request/response schemas.
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -11,6 +11,10 @@ class CheckRequest(BaseModel):
     text: str = Field(..., description="Text to check for plagiarism", min_length=10)
     threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Similarity threshold (0-1)")
     max_sentences: int = Field(default=10, ge=1, le=30, description="Max sentences to analyse")
+    check_mode: Literal["standard", "semantic"] = Field(
+        default="standard",
+        description="'standard' = text overlap (difflib), 'semantic' = embedding cosine similarity"
+    )
 
 
 class SearchedSource(BaseModel):
@@ -54,6 +58,9 @@ class PlagiarismReport(BaseModel):
     highest_match_url: Optional[str] = Field(default=None, description="URL of the highest match source")
     highest_match_title: Optional[str] = Field(default=None, description="Title of the highest match source")
     processing_time: float = Field(..., description="Processing time in seconds")
+    check_mode: str = Field(default="standard", description="Which mode was used: 'standard' or 'semantic'")
+    risk_level: str = Field(default="Low", description="Risk level: Low / Moderate / High / Very High")
+    summary: Optional[str] = Field(default=None, description="AI executive summary")
 
 
 class HealthResponse(BaseModel):

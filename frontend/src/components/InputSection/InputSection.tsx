@@ -3,7 +3,7 @@
 import React, { useState, useRef, ChangeEvent } from "react";
 
 interface InputSectionProps {
-  onSubmit: (text: string, threshold: number, maxSentences: number) => void;
+  onSubmit: (text: string, threshold: number, maxSentences: number, checkMode: string) => void;
   isLoading: boolean;
 }
 
@@ -11,6 +11,7 @@ export default function InputSection({ onSubmit, isLoading }: InputSectionProps)
   const [text, setText] = useState("");
   const [threshold, setThreshold] = useState(0.75);
   const [maxSentences, setMaxSentences] = useState(10);
+  const [checkMode, setCheckMode] = useState<"standard" | "semantic">("standard");
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -30,7 +31,7 @@ export default function InputSection({ onSubmit, isLoading }: InputSectionProps)
 
   const handleSubmit = () => {
     if (text.trim().length < 10) return;
-    onSubmit(text.trim(), threshold, maxSentences);
+    onSubmit(text.trim(), threshold, maxSentences, checkMode);
   };
 
   const handleClear = () => {
@@ -113,6 +114,79 @@ export default function InputSection({ onSubmit, isLoading }: InputSectionProps)
           disabled={isLoading || isExtracting}
         />
         <div className="char-count">{text.length} characters</div>
+      </div>
+
+      {/* ── Check Mode Toggle ── */}
+      <div style={{ padding: "0 24px 20px" }}>
+        <div style={{ marginBottom: "10px", fontSize: "0.82rem", fontWeight: 500, color: "var(--text-secondary)" }}>
+          Check Mode
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+          {/* Standard */}
+          <button
+            type="button"
+            onClick={() => setCheckMode("standard")}
+            style={{
+              padding: "14px 16px",
+              borderRadius: "12px",
+              border: checkMode === "standard" ? "2px solid var(--accent-cyan)" : "1px solid var(--border)",
+              background: checkMode === "standard" ? "rgba(6, 182, 212, 0.1)" : "rgba(255,255,255,0.03)",
+              cursor: "pointer",
+              textAlign: "left",
+              transition: "all 0.2s ease",
+              outline: "none",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+              <span style={{ fontSize: "1.1rem" }}>🔍</span>
+              <span style={{
+                fontFamily: "Space Grotesk",
+                fontWeight: 700,
+                fontSize: "0.9rem",
+                color: checkMode === "standard" ? "var(--accent-cyan-light)" : "var(--text-primary)",
+              }}>
+                Standard Check
+              </span>
+              {checkMode === "standard" && (
+                <span style={{ marginLeft: "auto", fontSize: "0.65rem", background: "rgba(6,182,212,0.2)", color: "var(--accent-cyan)", padding: "2px 7px", borderRadius: "8px", fontWeight: 600 }}>DEFAULT</span>
+              )}
+            </div>
+            <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
+              Exact text &amp; copy-paste detection. Flags direct copying and minor rewording — won&apos;t flag paraphrasing.
+            </p>
+          </button>
+
+          {/* Deep Semantic */}
+          <button
+            type="button"
+            onClick={() => setCheckMode("semantic")}
+            style={{
+              padding: "14px 16px",
+              borderRadius: "12px",
+              border: checkMode === "semantic" ? "2px solid var(--accent-purple)" : "1px solid var(--border)",
+              background: checkMode === "semantic" ? "rgba(124, 58, 237, 0.1)" : "rgba(255,255,255,0.03)",
+              cursor: "pointer",
+              textAlign: "left",
+              transition: "all 0.2s ease",
+              outline: "none",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+              <span style={{ fontSize: "1.1rem" }}>🧠</span>
+              <span style={{
+                fontFamily: "Space Grotesk",
+                fontWeight: 700,
+                fontSize: "0.9rem",
+                color: checkMode === "semantic" ? "var(--accent-purple-light)" : "var(--text-primary)",
+              }}>
+                Deep Semantic Check
+              </span>
+            </div>
+            <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
+              AI-powered meaning &amp; paraphrase detection. Catches idea theft, rewrites, and translated content — stricter.
+            </p>
+          </button>
+        </div>
       </div>
 
       <div className="controls-row">

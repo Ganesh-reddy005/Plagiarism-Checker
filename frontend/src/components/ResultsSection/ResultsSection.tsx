@@ -38,6 +38,7 @@ interface ReportData {
   processing_time: number;
   risk_level: string;
   summary: string;
+  check_mode: string;
   highest_match_score: number;
   highest_match_url: string | null;
   highest_match_title: string | null;
@@ -61,9 +62,26 @@ export default function ResultsSection({ report, originalText, onReset }: Result
           {/* Left Side: Score & Title */}
           <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
             <ScoreGauge score={report.score} riskLevel={report.risk_level} />
-            <h2 style={{ fontFamily: "Space Grotesk", fontSize: "1.8rem", margin: 0 }}>
-              Analysis Report
-            </h2>
+            <div>
+              <h2 style={{ fontFamily: "Space Grotesk", fontSize: "1.8rem", margin: "0 0 8px 0" }}>
+                Analysis Report
+              </h2>
+              {/* Check mode badge */}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 12px", borderRadius: "20px",
+                background: report.check_mode === "semantic"
+                  ? "rgba(124, 58, 237, 0.15)" : "rgba(6, 182, 212, 0.12)",
+                border: `1px solid ${report.check_mode === "semantic" ? "rgba(124,58,237,0.4)" : "rgba(6,182,212,0.35)"}`,
+              }}>
+                <span style={{ fontSize: "0.85rem" }}>
+                  {report.check_mode === "semantic" ? "🧠" : "🔍"}
+                </span>
+                <span style={{ fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
+                  color: report.check_mode === "semantic" ? "var(--accent-purple-light)" : "var(--accent-cyan-light)"
+                }}>
+                  {report.check_mode === "semantic" ? "Deep Semantic Check" : "Standard Text Check"}
+                </span>
+              </div>
+            </div>
           </div>
           
           {/* Right Side: Stats */}
@@ -123,13 +141,12 @@ export default function ResultsSection({ report, originalText, onReset }: Result
       {/* Split Dashboard */}
       <div style={{ 
         display: "grid", 
-        gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))", 
-        gap: "24px", 
-        minHeight: "600px", 
-        height: "auto" 
+        gridTemplateColumns: "1fr 1fr", 
+        gap: "24px",
+        alignItems: "start"
       }}>
         {/* Left: Original Text Highlighter */}
-        <div style={{ height: "600px", minHeight: "600px" }}>
+        <div style={{ height: "650px" }}>
           <TextHighlighter 
             originalText={originalText} 
             matches={report.matches} 
@@ -138,7 +155,7 @@ export default function ResultsSection({ report, originalText, onReset }: Result
         </div>
 
         {/* Right: Sources Breakdown */}
-        <div style={{ height: "600px", minHeight: "600px" }}>
+        <div style={{ height: "650px" }}>
           <SourcesPanel 
             sentenceResults={report.sentence_search_results} 
             activeSentence={activeSentence}
