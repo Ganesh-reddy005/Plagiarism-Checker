@@ -15,10 +15,10 @@ A professional-grade plagiarism detection system that goes beyond simple keyword
 - **Standard Mode**: Utilizes `difflib` and token-level comparison to detect exact string matches and minor edits.
 - **Semantic Mode**: Leverages `Sentence Transformers` (`all-MiniLM-L6-v2`) to compute high-dimensional vector similarities, catching paraphrased content that traditional checkers miss.
 
-### 🌐 Live Web Intelligence
-- Integrated with the **Tavily Search API** for real-time internet scanning.
-- Concurrent sentence analysis for rapid results.
-- Retrieves source URLs, page titles, and relevant snippets for detailed reporting.
+### 🌐 LLM-Driven "Smart Search"
+- Uses **Groq (Llama-3.3-70b)** to fully understand the context of the document and generate targeted search queries.
+- Concurrently queries the web via **Tavily Search API** and academic databases via **OpenAlex API**.
+- Drastically improves detection of heavily paraphrased content compared to naive sentence-by-sentence searching.
 
 ### 📄 Comprehensive Document Support
 - **Direct Uploads**: Supports `.pdf` and `.txt` file processing with automated text extraction.
@@ -36,17 +36,20 @@ A professional-grade plagiarism detection system that goes beyond simple keyword
 ```mermaid
 graph TD
     A[User Input / PDF] --> B[Preprocessor]
-    B --> C{Split into Sentences}
-    C --> D[Web Search - Tavily]
-    C --> E[Internal Search - Qdrant/Local]
-    D --> F[Merge Results]
-    E --> F
-    F --> G{Detection Mode}
-    G -- Standard --> H[Text Overlap Score]
-    G -- Semantic --> I[Embedding Cosine Similarity]
-    H --> J[Report Generator]
-    I --> J
-    J --> K[Next.js Dashboard]
+    B --> C[Groq LLM: Context Analysis]
+    C --> D{Generate Smart Queries}
+    D -- Web Queries --> E[Tavily Search]
+    D -- Academic Queries --> F[OpenAlex API]
+    D -- Local Queries --> G[Qdrant Database]
+    E --> H[Global Evidence Pool]
+    F --> H
+    G --> H
+    H --> I{Sentence Evaluation}
+    I -- Standard --> J[Text Overlap Score]
+    I -- Semantic --> K[Embedding Cosine Similarity]
+    J --> L[Report Generator]
+    K --> L
+    L --> M[Next.js Dashboard]
 ```
 
 ---
@@ -94,6 +97,9 @@ The application will be available at [http://localhost:3000](http://localhost:30
 | Variable | Description | Source |
 |----------|-------------|--------|
 | `TAVILY_API_KEY` | Required for web search functionality. | [tavily.com](https://tavily.com) |
+| `GROQ_LLM_API` | Required for LLM query generation & summaries. | [groq.com](https://console.groq.com) |
+| `OPENALEX_EMAIL` | Optional (but recommended): For polite-pool academic search. | |
+| `OPENALEX_API_KEY`| Optional: For premium academic search tier. | [openalex.org](https://openalex.org) |
 | `DATABASE_URL` | Optional: PostgreSQL/SQLite for history. | |
 | `MODEL_NAME` | Defaults to `all-MiniLM-L6-v2`. | HuggingFace |
 
