@@ -2,7 +2,8 @@
 LLM Helper module for generating intelligent summaries using Groq.
 """
 import os
-from typing import Optional
+from typing import Optional, List, Dict
+import json
 from groq import Groq
 from app.models import PlagiarismReport
 
@@ -15,6 +16,61 @@ def get_groq_client() -> Optional[Groq]:
         if api_key and not api_key.startswith("groq-your"):
             _groq_client = Groq(api_key=api_key)
     return _groq_client
+
+def generate_search_queries(text: str, max_queries: int = 15) -> List[Dict[str, str]]:
+    """
+    Analyses the input text and generates a list of search queries to find potential plagiarism.
+    Returns a list of dicts like: [{"query": "theory of relativity einstein mass energy", "type": "academic"}]
+    """
+    client = get_groq_client()
+    if not client:
+        # Fallback if no LLM: just return some basic chunked queries of the text and assign half to web, half to academic
+        print("[llm_helper] No Groq client. Using fallback query generation.")
+        words = text.split()
+        chunks = [" ".join(words[i:i+10]) for i in range(0, len(words), max(10, len(words)//10))]
+        queries = []
+        for i, chunk in enumerate(chunks[:max_queries]):
+            queries.append({
+                "query": chunk,
+                "type": "academic" if i % 2 == 0 else "web"
+            })
+        return queries
+
+    prompt = f"""
+You are an expert plagiarism detection system. Your task is to analyze the provided text and conceptualize targeted search queries to locate its original source if it was plagiarized or heavily paraphrased.
+
+Instructions:
+1. Identify unique claims, specific arguments, highly specific technical phrases, and core concepts.
+2. Generate up to {max_queries} distinct search queries.
+3. Categorize each query as either 'web' (for general internet search) or 'academic' (for research paper databases).
+4. Do NOT use quotes in your queries unless it's a highly distinctive 3-4 word phrase. Use combinations of 4-8 keywords.
+
+Format exactly as a valid JSON object with a "queries" key containing an array of objects:
+{{
+  "queries": [
+    {{"query": "the exact search string", "type": "web"}},
+    {{"query": "another search string", "type": "academic"}}
+  ]
+}}
+
+Text to analyze:
+{text[:4000]}
+"""
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.3-70b-versatile",
+            temperature=0.2,
+            response_format={"type": "json_object"},
+            max_tokens=1024,
+        )
+        content = chat_completion.choices[0].message.content.strip()
+        data = json.loads(content)
+        return data.get("queries", [])
+    except Exception as e:
+        print(f"[llm_helper] Error generating queries: {e}")
+        return []
+
 
 def generate_report_summary(report: PlagiarismReport) -> str:
     """
